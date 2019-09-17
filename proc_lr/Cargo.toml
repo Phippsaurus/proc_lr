@@ -1,0 +1,14 @@
+[package]
+name = "proc_lr"
+version = "0.1.0"
+authors = ["Phippsaurus <philipp.trucksaess@gmail.com>"]
+edition = "2018"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+nom = "5.0"
+proc-macro2 = "0.4"
+quote = "0.6"
+syn = { version = "1.0.5", features = ["full"] }
