@@ -1,22 +1,23 @@
 use lr::grammar;
 
 grammar! {
-    S: i64;
-    E: i64;
-    T: i64;
-    F: i64;
-    Id: i64;
+    S: f64;
+    E: f64;
+    T: f64;
+    F: f64;
+    Id: f64;
 
-    // /r"\s+" => _;
-    /r"-?\d+" => Id |input: &str| input.parse::<i64>().unwrap();
+    /r"[\n\s]+" => _;
+    /r"-?\d+(\.\d+)?" => Id |input: &str| input.parse::<f64>().unwrap();
 
-    S ::= E '$' |e: i64| e;
-    E ::= E '+' T |e: i64, t: i64| e + t;
-    E ::= T |t: i64| t;
-    T ::= T '*' F |t: i64, f: i64| t * f;
-    T ::= F |f: i64| f;
-    F ::= Id |id: i64| id;
-    F ::= '(' E ')' |e: i64| e;
+    S ::= E '$' |e: f64| e;
+    E ::= E '+' T |e: f64, t: f64| e + t;
+    E ::= T |t: f64| t;
+    T ::= T '*' F |t: f64, f: f64| t * f;
+    T ::= T '/' F |t: f64, f: f64| t / f;
+    T ::= F |f: f64| f;
+    F ::= Id |id: f64| id;
+    F ::= '(' E ')' |e: f64| e;
 }
 
 fn main() {
