@@ -1,8 +1,8 @@
 use crate::common_types::*;
 use proc_macro2::TokenStream;
-use syn::{Ident, Type};
 use quote::*;
 use std::collections::HashMap;
+use syn::{Ident, Type};
 
 pub(crate) fn generate_scanner(
     scan_rules: &[ScanRule],
@@ -51,12 +51,15 @@ pub(crate) fn generate_scanner(
                 }
             }
             ScanInput::Regex(r) => {
-                let regex = format!("^{}", r);
+                let regex = format!("^({})", r);
                 quote! {
-                    if let Some(end) = Regex::new(#regex)
-                            .unwrap()
-                            .find(self.input)
-                            .map(|mat| mat.end()) {
+                    if let Some(end) = {
+                        lazy_static! {
+                            static ref REGEX: Regex = Regex::new(#regex).unwrap();
+                        }
+                        REGEX.find(self.input)
+                             .map(|mat| mat.end())
+                    } {
                         let token_text = &self.input[..end];
                         self.input = &self.input[end..];
                         #return_stmt
@@ -76,6 +79,7 @@ pub(crate) fn generate_scanner(
 
             fn next(&mut self) -> Option<Self::Item> {
                 use lr::Regex;
+                use lr::lazy_static;
                 if self.input.is_empty() {
                     return Some(ScanToken::Token(#end_symbol));
                 }

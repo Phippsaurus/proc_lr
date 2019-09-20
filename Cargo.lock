@@ -17,6 +17,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 name = "lr"
 version = "0.1.0"
 dependencies = [
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "proc_lr 0.1.0",
  "regex 1.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

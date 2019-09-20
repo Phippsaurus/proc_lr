@@ -8,4 +8,5 @@ edition = "2018"
 
 [dependencies]
 regex = "1"
+lazy_static = "1.4.*"
 proc_lr = { path = "../proc_lr" }
