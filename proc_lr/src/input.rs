@@ -20,9 +20,6 @@ impl Grammar {
     pub(crate) fn parse_rules(&self) -> &[ParseRule] {
         self.parse_rules.as_ref()
     }
-    pub(crate) fn symbol_map(&self) -> &SymbolMap {
-        &self.symbol_map
-    }
     pub(crate) fn symbol_variants(&self) -> &HashMap<Symbol, (Ident, Type)> {
         &self.symbol_variants
     }

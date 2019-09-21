@@ -5,11 +5,7 @@ use syn::ExprClosure;
 pub(crate) struct Nonterminal(usize);
 
 impl Nonterminal {
-    pub(crate) fn new(id: usize) -> Self {
-        Self(id)
-    }
-
-    pub(crate) fn id(&self) -> usize {
+    pub(crate) fn id(self) -> usize {
         self.0
     }
 }
@@ -18,11 +14,7 @@ impl Nonterminal {
 pub(crate) struct Terminal(usize);
 
 impl Terminal {
-    pub(crate) fn new(id: usize) -> Self {
-        Self(id)
-    }
-
-    pub(crate) fn id(&self) -> usize {
+    pub(crate) fn id(self) -> usize {
         self.0
     }
 }
@@ -34,12 +26,6 @@ pub(crate) enum Symbol {
 }
 
 impl Symbol {
-    pub(crate) fn id(&self) -> usize {
-        *match self {
-            Symbol::Nonterminal(Nonterminal(id)) => id,
-            Symbol::Terminal(Terminal(id)) => id,
-        }
-    }
     fn nonterminal(&self) -> Nonterminal {
         *match self {
             Symbol::Nonterminal(nonterminal) => nonterminal,
@@ -164,10 +150,6 @@ impl ScanRule {
     pub(crate) fn production(&self) -> &Option<ExprClosure> {
         &self.production
     }
-
-    pub(crate) fn ignore(&self) -> bool {
-        self.terminal.is_none()
-    }
 }
 
 pub(crate) struct ParseRule {
@@ -204,7 +186,7 @@ impl ParseRule {
     }
 
     pub(crate) fn first_rhs(&self) -> Option<Symbol> {
-        self.rhs.first().map(|symbol| *symbol)
+        self.rhs.first().cloned()
     }
 
     pub(crate) fn production(&self) -> &Option<ExprClosure> {

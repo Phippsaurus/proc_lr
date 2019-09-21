@@ -8,8 +8,8 @@ mod rules;
 
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
-use quote::*;
 use quote::ToTokens;
+use quote::*;
 use std::collections::{BTreeSet, HashMap};
 use syn::parse_macro_input;
 
@@ -90,26 +90,6 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                             } else {
                                 Action::Shift(id)
                             }
-                        /*
-                        match &reduce_action {
-                            Action::Accept => {
-                                Action::Conflict(Conflict::ShiftReduce(id, RuleId(0)))
-                            }
-                            Action::Reduces(rules) => {
-                                let shift_reduce_disjoint =
-                                    rules.iter().all(|(_, lookahead)| {
-                                        !lookahead.contains(&symbol.terminal())
-                                    });
-                                if shift_reduce_disjoint {
-                                    Action::ShiftReduces(id, rules.clone())
-                                } else {
-                                    Action::Conflict(Conflict::ShiftReduce(id, rules[0].0))
-                                }
-                            }
-                            Action::Conflict(_) => reduce_action.clone(),
-                            _ => Action::Shift(id),
-                        }
-                        */
                         } else {
                             Action::Goto(id)
                         }
@@ -233,22 +213,6 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                             Action::Goto(StateId(id)) => format!("<td>G {}</td>\n", id),
                             Action::Shift(StateId(id)) => format!("<td>S {}</td>\n", id),
                             Action::Reduce(RuleId(id)) => format!("<td>R {}</td>\n", id),
-                            Action::Reduces(rules) => format!("<td>{}</td>\n", {
-                                let reduces = rules
-                                    .iter()
-                                    .map(|(id, _)| format!("R {}", id.0))
-                                    .collect::<Vec<_>>();
-                                reduces.join(" / ")
-                            }),
-                            Action::ShiftReduces(StateId(id), rules) => {
-                                format!("<td>S {} / {}</td>", id, {
-                                    let reduces = rules
-                                        .iter()
-                                        .map(|(id, _)| format!("R {}", id.0))
-                                        .collect::<Vec<_>>();
-                                    reduces.join(" / ")
-                                })
-                            }
                             Action::Conflict(conflict) => match conflict {
                                 Conflict::ShiftReduce(StateId(state), RuleId(rule)) => {
                                     format!("<td>S{}/R{}</td>", state, rule)
@@ -288,9 +252,11 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                         .iter()
                         .filter(|symbol| variants.contains_key(symbol))
                         .count();
-                    let args = (0..arg_count).map(|_arg_idx| quote! {
-                        args.next().unwrap().into()
-                        // args[#arg_idx].into()
+                    let args = (0..arg_count).map(|_arg_idx| {
+                        quote! {
+                            args.next().unwrap().into()
+                            // args[#arg_idx].into()
+                        }
                     });
                     quote! {
                         #id => {
@@ -311,11 +277,6 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
             }
         }
     });
-    let rules = grammar
-        .parse_rules()
-        .iter()
-        .map(|rule| (rule.lhs().id(), rule.rhs().len()))
-        .collect::<Vec<_>>();
 
     let actions = table.iter().map(|row| {
         let actions = row.iter().map(|action| match action {
@@ -323,49 +284,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
             Action::Accept => quote! { Action::Accept },
             Action::Goto(StateId(id)) => quote! { Action::Goto(#id) },
             Action::Shift(StateId(id)) => quote! { Action::Shift(#id) },
-            Action::Reduce(RuleId(id)) => {
-                // let (goto, pop) = rules[*id];
-                // quote! { Action::Reduce(#goto, #pop) }
-                quote! { Action::Reduce(#id) }
-            }
-            Action::Reduces(reduce_rules) if reduce_rules.len() == 1 => {
-                let rule = reduce_rules[0].0;
-                let id = rule.0;
-                quote! { Action::Reduce(#id) }
-                // let (goto, pop) = rules[rule.0];
-                // quote! { Action::Reduce(#goto, #pop) }
-            }
-            Action::Reduces(reduce_rules) => {
-                let reduces = reduce_rules.iter().map(|(id, lookahead)| {
-                    let (goto, pop) = rules[id.0];
-                    let lookahead = lookahead.iter().map(|terminal| terminal.id());
-                    quote! {
-                        LookaheadReduce::new(#goto, #pop, vec![#(#lookahead),*])
-                    }
-                });
-                quote! { Action::Reduces(vec![#(#reduces),*]) }
-            }
-            Action::ShiftReduces(StateId(id), reduce_rules) if reduce_rules.len() == 1 => {
-                let rule = reduce_rules[0].0;
-                let (goto, pop) = rules[rule.0];
-                let lookahead = reduce_rules[0].1.iter().map(|terminal| terminal.id());
-                quote! {
-                    Action::ShiftReduce(
-                        Box::new(ShiftReduce::new(#id, #goto, #pop, vec![#(#lookahead),*]))
-                    )
-                }
-            }
-            Action::ShiftReduces(StateId(id), reduce_rules) => {
-                let rule = reduce_rules[0].0;
-                let (goto, pop) = rules[rule.0];
-                let lookahead = reduce_rules[0].1.iter().map(|terminal| terminal.id());
-                // TODO: Handle multiple reduce
-                quote! {
-                    Action::ShiftReduce(
-                        Box::new(ShiftReduce::new(#id, #goto, #pop, vec![#(#lookahead),*]))
-                    )
-                }
-            }
+            Action::Reduce(RuleId(id)) => quote! { Action::Reduce(#id) },
             Action::Conflict(_) => {
                 panic!("Cannot make a parser from conflicting rules: {:#?}", action)
             }
@@ -375,23 +294,26 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
         }
     });
 
-
     let scanner = generate_scanner(grammar.scan_rules(), end_symbol, grammar.symbol_variants());
-    let variants = grammar.symbol_variants().values().map(|(id, ty)| quote! {
-        #id(#ty)
+    let variants = grammar.symbol_variants().values().map(|(id, ty)| {
+        quote! {
+            #id(#ty)
+        }
     });
     let mut intos: HashMap<String, (syn::Type, Vec<Ident>)> = HashMap::new();
     for (id, ty) in grammar.symbol_variants().values() {
         let type_name = syn::Type::to_token_stream(ty).to_string();
-        if intos.contains_key(&type_name) {
-            intos.get_mut(&type_name).unwrap().1.push(id.clone());
-        } else {
-            intos.insert(type_name, (ty.clone(), vec![id.clone()]));
-        }
+        intos
+            .entry(type_name)
+            .or_insert((ty.clone(), Vec::new()))
+            .1
+            .push(id.clone());
     }
     let intos = intos.iter().map(|(type_name, (ty, idents))| {
-        let idents = idents.iter().map(|id| quote! {
-            Symbol::#id(value) => value
+        let idents = idents.iter().map(|id| {
+            quote! {
+                Symbol::#id(value) => value
+            }
         });
         quote! {
             impl Into<#ty> for Symbol {
@@ -405,7 +327,8 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
         }
     });
 
-    let parse_result_type = &grammar.symbol_variants()[&Symbol::Nonterminal(grammar.parse_rules()[0].lhs())].1;
+    let parse_result_type =
+        &grammar.symbol_variants()[&Symbol::Nonterminal(grammar.parse_rules()[0].lhs())].1;
 
     TokenStream::from(quote! {
         #[derive(Debug)]

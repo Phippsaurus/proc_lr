@@ -52,7 +52,7 @@ impl LookaheadRule {
     }
 
     fn first_rhs(&self) -> Option<Symbol> {
-        self.rhs.get(self.seen).map(|symbol| *symbol)
+        self.rhs.get(self.seen).cloned()
     }
 
     pub(crate) fn is_reducible(&self) -> bool {
@@ -119,10 +119,7 @@ pub(crate) fn first_sets(rules: &[ParseRule]) -> FirstSets {
         let (symbol, _) = dependency_graph
             .iter()
             .find(|(_, node)| node.degree == 0)
-            .expect(&format!(
-                "Rule dependency loop detected: {:?}",
-                dependency_graph
-            ));
+            .expect("Rule dependency loop detected");
         let symbol = *symbol;
         let node = dependency_graph
             .remove(&symbol)
@@ -153,7 +150,7 @@ pub(crate) trait Closure {
                 lookaheads.entry(first_rhs).or_default().extend(
                     rules[rule_idx]
                         .follow(first_sets)
-                        .unwrap_or(rules[rule_idx].lookahead.clone())
+                        .unwrap_or_else(|| rules[rule_idx].lookahead.clone())
                         .into_iter(),
                 );
                 if explored_symbols.insert(first_rhs) {
@@ -279,8 +276,6 @@ pub(crate) enum Conflict {
 pub(crate) enum Action {
     Undefined,
     Shift(StateId),
-    ShiftReduces(StateId, Vec<(RuleId, BTreeSet<Terminal>)>),
-    Reduces(Vec<(RuleId, BTreeSet<Terminal>)>),
     Reduce(RuleId),
     Goto(StateId),
     Accept,
