@@ -7,7 +7,7 @@ generators.
 Generate a working __LR__-parser with minimum effort and without
 external tools through a `proc_macro`.  At this point, a full __LR(1)__-parser
 is generated, but the goal is to simplify this further. Features like
-associativity are still missing.
+associativity are still missing. So is documentation.
 
 ## Usage
 
@@ -55,3 +55,10 @@ symbol. Using terminals like the literal character `+` in a parse rule
 automatically generates scanner rules. The closures behind rules define how
 inputs should be processed and unfortunately type inference for their arguments
 does not work.
+
+The generated parser can be called as:
+
+```rust
+let parser = Parser::new();
+println!("{}", parser.parse("3 + 4 * (8 - 12.2) / 7.5").unwrap());
+```
