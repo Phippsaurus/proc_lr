@@ -15,6 +15,7 @@ grammar! {
     S: JsonValue;
     A: JsonValue;
     O: JsonValue;
+    St: String;
     Str: JsonValue;
     V: JsonValue;
     ES: Vec<JsonValue>;
@@ -27,8 +28,8 @@ grammar! {
     "false" => A |_: &str| JsonValue::Bool(false);
     "null" => A |_: &str| JsonValue::Null;
     /r"-?\d+(\.\d+)?" => A |input: &str| JsonValue::Number(input.parse::<f64>().unwrap());
-    /r#""(\\"|[^"])*""# => Str |input: &str|
-        JsonValue::Str(input[1..input.len() - 1].to_string());
+    /r#""(\\"|[^"])*""# => St |input: &str|
+        input[1..input.len() - 1].to_string();
 
     S ::= V '$' |obj: JsonValue| obj;
     O ::= '{' '}' || JsonValue::Object(HashMap::new());
@@ -42,12 +43,8 @@ grammar! {
         keys_values.insert(name, value);
         keys_values
     };
-    KV ::= Str ':' V |name: JsonValue, value: JsonValue| {
-        if let JsonValue::Str(name) = name {
-            return (name, value);
-        }
-        panic!("Incorrect scan rule");
-    };
+    KV ::= St ':' V |name: String, value: JsonValue| return (name, value);
+    Str ::= St |string: String| JsonValue::Str(string);
     V ::= A |atom: JsonValue| atom;
     V ::= Str |string: JsonValue| string;
     V ::= O |obj: JsonValue| obj;
