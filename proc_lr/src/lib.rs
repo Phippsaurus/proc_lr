@@ -5,6 +5,7 @@ mod common_types;
 mod input;
 mod output;
 mod rules;
+mod dot_string_escape;
 
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
@@ -17,6 +18,7 @@ use common_types::*;
 use input::*;
 use output::*;
 use rules::*;
+use dot_string_escape::Escape;
 
 #[proc_macro]
 pub fn grammar(tokens: TokenStream) -> TokenStream {
@@ -101,7 +103,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
         states.append(&mut new_states);
         idx += 1;
     }
-    let graph = "digraph states {\nnode[shape = record];\n".to_string()
+    let dot = "digraph states {\nnode[shape = record];\n".to_string()
         + &states
             .iter()
             .enumerate()
@@ -111,7 +113,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                         .rules
                         .iter()
                         .map(|rule| {
-                            rev_symbols[&Symbol::Nonterminal(rule.lhs())].to_string()
+                            rev_symbols[&Symbol::Nonterminal(rule.lhs())].escape()
                                 + " ⇒"
                                 + &rule
                                     .rhs()
@@ -123,7 +125,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                                         } else {
                                             " ".to_string()
                                         };
-                                        pre + rev_symbols[symbol]
+                                        pre + &rev_symbols[symbol].escape()
                                     })
                                     .collect::<String>()
                                 + if rule.is_reducible() {
@@ -135,7 +137,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                                     .lookahead
                                     .iter()
                                     .map(|terminal| {
-                                        rev_symbols[&Symbol::Terminal(*terminal)].clone()
+                                        rev_symbols[&Symbol::Terminal(*terminal)].escape()
                                     })
                                     .collect::<String>()
                                 + "⦄\\n"
@@ -168,7 +170,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
         + "}";
 
     let echo = std::process::Command::new("echo")
-        .arg(&graph)
+        .arg(&dot)
         .stdout(std::process::Stdio::piped())
         .spawn()
         .expect("Cannot echo");
@@ -226,7 +228,8 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                     + "</tr>\n"
             })
             .collect::<String>()
-        + "</table>\n<br /><h1>Transition Graph</h1>"
+        + "</table>\n<br /><h1>Transition Graph</h1>\n<!--\n"
+        + &dot + "\n-->"
         + &String::from_utf8(graph.stdout).expect("Command output not in UTF-8");
 
     let num_symbols = symbols.len();
