@@ -4,8 +4,7 @@ pub(super) trait Escape {
 
 impl Escape for str {
     fn escape(&self) -> String {
-        self
-            .replace('"', "\\\"")
+        self.replace('"', "\\\"")
             .replace('[', "\\[")
             .replace(']', "\\]")
             .replace('{', "\\{")

@@ -22,13 +22,21 @@ pub(crate) fn generate_scanner(
                     Some(production) => quote! { Symbol::#variant((#production)(token_text)) },
                 };
                 quote! {
-                    return Some(ScanToken::Production(#id, #production));
+                    return Some(ScanToken {
+                        kind: TokenKind::Production(#id, #production),
+                        offset,
+                        length,
+                    });
                 }
             }
             Some(terminal) => {
                 let id = terminal.id();
                 quote! {
-                    return Some(ScanToken::Token(#id));
+                    return Some(ScanToken {
+                        kind: TokenKind::Token(#id),
+                        offset,
+                        length,
+                    });
                 }
             }
         };
@@ -37,6 +45,11 @@ pub(crate) fn generate_scanner(
                 if self.input.starts_with(#c) {
                     let token_text = &self.input[..1];
                     self.input = &self.input[1..];
+
+                    let offset = self.offset;
+                    let length = 1;
+                    self.offset += 1;
+
                     #return_stmt
                 }
             },
@@ -46,6 +59,11 @@ pub(crate) fn generate_scanner(
                     if self.input.starts_with(#s) {
                         let token_text = &self.input[..#len];
                         self.input = &self.input[#len..];
+
+                        let offset = self.offset;
+                        let length = #len;
+                        self.offset += #len;
+
                         #return_stmt
                     }
                 }
@@ -62,6 +80,11 @@ pub(crate) fn generate_scanner(
                     } {
                         let token_text = &self.input[..end];
                         self.input = &self.input[end..];
+
+                        let offset = self.offset;
+                        let length = end;
+                        self.offset += end;
+
                         #return_stmt
                     }
                 }
@@ -72,6 +95,16 @@ pub(crate) fn generate_scanner(
     quote! {
         struct ScannedTokens<'a> {
             input: &'a str,
+            offset: usize,
+        }
+
+        impl<'a> ScannedTokens<'a> {
+            fn from(input: &'a str) -> Self {
+                Self {
+                    input,
+                    offset: 0,
+                }
+            }
         }
 
         impl<'a> Iterator for ScannedTokens<'a> {
@@ -81,10 +114,18 @@ pub(crate) fn generate_scanner(
                 use lr::Regex;
                 use lr::lazy_static;
                 if self.input.is_empty() {
-                    return Some(ScanToken::Token(#end_symbol));
+                    return Some(ScanToken {
+                        kind: TokenKind::Token(#end_symbol),
+                        offset: self.offset,
+                        length: 0,
+                    });
                 }
                 #(#rules)*
-                return None;
+                Some(ScanToken {
+                    kind: TokenKind::Invalid,
+                    offset: self.offset,
+                    length: 1,
+                })
             }
         }
     }

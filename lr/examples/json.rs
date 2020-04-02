@@ -60,8 +60,9 @@ grammar! {
 
 fn main() {
     let parser = Parser::new();
-    match parser.parse(&std::env::args().nth(1).expect("No input")) {
-        Some(result) => println!("Result = {:?}", result),
-        None => println!("Invalid input."),
-    }
+    println!("{}", parser.to_html_debug());
+    // match parser.parse(&std::env::args().nth(1).expect("No input")) {
+    //     Some(result) => println!("Result = {:?}", result),
+    //     None => println!("Invalid input."),
+    // }
 }

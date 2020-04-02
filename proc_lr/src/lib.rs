@@ -2,10 +2,10 @@
 extern crate proc_macro;
 
 mod common_types;
+mod dot_string_escape;
 mod input;
 mod output;
 mod rules;
-mod dot_string_escape;
 
 use proc_macro::TokenStream;
 use proc_macro2::Ident;
@@ -15,10 +15,10 @@ use std::collections::{BTreeSet, HashMap};
 use syn::parse_macro_input;
 
 use common_types::*;
+use dot_string_escape::Escape;
 use input::*;
 use output::*;
 use rules::*;
-use dot_string_escape::Escape;
 
 #[proc_macro]
 pub fn grammar(tokens: TokenStream) -> TokenStream {
@@ -229,7 +229,8 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
             })
             .collect::<String>()
         + "</table>\n<br /><h1>Transition Graph</h1>\n<!--\n"
-        + &dot + "\n-->"
+        + &dot
+        + "\n-->"
         + &String::from_utf8(graph.stdout).expect("Command output not in UTF-8");
 
     let num_symbols = symbols.len();
@@ -342,17 +343,30 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
         #(#intos)*
 
         #[derive(Debug)]
-        pub enum ScanToken {
+        pub enum TokenKind {
             Token(usize),
             Production(usize, Symbol),
+            Invalid,
+        }
+
+        #[derive(Debug)]
+        pub struct ScanToken {
+            kind: TokenKind,
+            offset: usize,
+            length: usize,
         }
 
         impl ScanToken {
             fn idx(&self) -> usize {
-                *match self {
-                    ScanToken::Token(u) => u,
-                    ScanToken::Production(u, _) => u,
+                match self.kind {
+                    TokenKind::Token(u) => u,
+                    TokenKind::Production(u, _) => u,
+                    TokenKind::Invalid => { panic!("Invalid input - no transition table index"); }
                 }
+            }
+
+            fn is_invalid(&self) -> bool {
+                if let TokenKind::Invalid = self.kind { true } else { false }
             }
         }
 
@@ -398,6 +412,17 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
             table: [[Action; #num_symbols]; #num_states],
         }
 
+        pub enum ParseError {
+            InvalidToken {
+                offset: usize,
+            },
+            UnexpectedToken {
+                offset: usize,
+                length: usize,
+            },
+            IncompleteInput,
+        }
+
         impl Parser {
             pub fn new() -> Self {
                 Self { table: [#(#actions),*] }
@@ -405,11 +430,14 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
             pub fn to_html_debug(&self) -> &'static str {
                 #output
             }
-            pub fn parse(&self, input: &str) -> Option<#parse_result_type> {
+            pub fn parse(&self, input: &str) -> Result<#parse_result_type, ParseError> {
                 let mut stack = vec![0];
                 let mut values: Vec<Symbol> = Vec::new();
-                let mut tokens = ScannedTokens { input };
+                let mut tokens = ScannedTokens::from(input);
                 for token in tokens {
+                    if token.is_invalid() {
+                        return Err(ParseError::InvalidToken { offset: token.offset });
+                    }
                     let idx = token.idx();
                     let mut state = *stack.last().unwrap();
 
@@ -428,19 +456,19 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                         }
                     }
                     if let Action::Accept = self.table[state][idx] {
-                        return values.pop().map(|symbol| symbol.into());
+                        return values.pop().map(|symbol| symbol.into()).ok_or_else(|| ParseError::IncompleteInput);
                     }
                     if let Action::Shift(new_state) = self.table[state][idx] {
-                        if let ScanToken::Production(_, symbol) = token {
+                        if let TokenKind::Production(_, symbol) = token.kind {
                             values.push(symbol);
                         }
                         state = new_state;
                         stack.push(new_state);
                     } else {
-                        return None;
+                        return Err(ParseError::UnexpectedToken { offset: token.offset, length: token.length });
                     }
                 }
-                return None;
+                Err(ParseError::IncompleteInput)
             }
         }
     })
