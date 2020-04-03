@@ -113,19 +113,20 @@ pub(crate) fn generate_scanner(
             fn next(&mut self) -> Option<Self::Item> {
                 use lr::Regex;
                 use lr::lazy_static;
+                #(#rules)*
                 if self.input.is_empty() {
-                    return Some(ScanToken {
+                    Some(ScanToken {
                         kind: TokenKind::Token(#end_symbol),
                         offset: self.offset,
                         length: 0,
-                    });
+                    })
+                } else {
+                    Some(ScanToken {
+                        kind: TokenKind::Invalid,
+                        offset: self.offset,
+                        length: 1,
+                    })
                 }
-                #(#rules)*
-                Some(ScanToken {
-                    kind: TokenKind::Invalid,
-                    offset: self.offset,
-                    length: 1,
-                })
             }
         }
     }

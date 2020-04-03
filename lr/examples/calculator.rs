@@ -1,4 +1,9 @@
 use lr::grammar;
+use std::{
+    env::args,
+    io::{self, stdin, stdout, Write},
+    iter::repeat,
+};
 
 grammar! {
     S: f64;
@@ -7,7 +12,7 @@ grammar! {
     F: f64;
     Id: f64;
 
-    /r"[\n\s]+" => _;
+    /r"[\r\n\s]+" => _;
     /r"\d+(\.\d+)?" => Id |input: &str| input.parse::<f64>().unwrap();
 
     S ::= E '$' |e: f64| e;
@@ -22,29 +27,49 @@ grammar! {
     F ::= '(' E ')' |e: f64| e;
 }
 
-fn main() {
-    let parser = Parser::new();
-    let input = std::env::args().nth(1).expect("No input");
-    match parser.parse(&input) {
-        Ok(result) => println!("Result = {:?}", result),
+fn parse(parser: &Parser, input: &str) {
+    match parser.parse(input) {
+        Ok(result) => println!("{} = {}", input, result),
         Err(error) => match error {
             ParseError::InvalidToken { offset } => println!(
-                "Invalid input at column {}:\n{}\n{}^",
+                "Invalid input {:?} at column {} of {}:\n{}\n{}^",
+                input.chars().nth(offset),
                 offset,
+                input.len(),
                 input,
-                std::iter::repeat(' ').take(offset).collect::<String>()
+                repeat(' ').take(offset).collect::<String>()
             ),
             ParseError::UnexpectedToken { offset, length } => println!(
                 "Unexpected token at column {}:\n{}\n{}",
                 offset,
                 input,
-                std::iter::repeat(' ')
+                repeat(' ')
                     .take(offset)
-                    .chain(std::iter::repeat('~').take(length))
+                    .chain(repeat('~').take(length))
                     .collect::<String>(),
             ),
             ParseError::IncompleteInput => println!("Incomplete input"),
         },
+    }
+}
+
+fn main() -> io::Result<()> {
+    let parser = Parser::new();
+    match args().nth(1) {
+        Some(ref input) => {
+            parse(&parser, input);
+            Ok(())
+        }
+        None => {
+            let mut input = String::new();
+            loop {
+                print!("> ");
+                stdout().flush()?;
+                stdin().read_line(&mut input)?;
+                parse(&parser, input.trim());
+                input.clear();
+            }
+        }
     }
     // println!("{}", parser.to_html_debug());
 }

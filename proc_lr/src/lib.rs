@@ -456,7 +456,10 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                         }
                     }
                     if let Action::Accept = self.table[state][idx] {
-                        return values.pop().map(|symbol| symbol.into()).ok_or_else(|| ParseError::IncompleteInput);
+                        return values
+                            .pop()
+                            .map(|symbol| symbol.into())
+                            .ok_or_else(|| ParseError::IncompleteInput);
                     }
                     if let Action::Shift(new_state) = self.table[state][idx] {
                         if let TokenKind::Production(_, symbol) = token.kind {
@@ -465,7 +468,10 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                         state = new_state;
                         stack.push(new_state);
                     } else {
-                        return Err(ParseError::UnexpectedToken { offset: token.offset, length: token.length });
+                        return Err(ParseError::UnexpectedToken {
+                            offset: token.offset,
+                            length: token.length,
+                        });
                     }
                 }
                 Err(ParseError::IncompleteInput)
