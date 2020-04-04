@@ -1,4 +1,6 @@
 #![recursion_limit = "256"]
+#![feature(exclusive_range_pattern)]
+#![feature(half_open_range_patterns)]
 extern crate proc_macro;
 
 mod common_types;
@@ -334,6 +336,8 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
     let parse_result_type =
         &grammar.symbol_variants()[&Symbol::Nonterminal(grammar.parse_rules()[0].lhs())].1;
 
+    let end_id = end_symbol.id();
+
     TokenStream::from(quote! {
         #[derive(Debug)]
         pub enum Symbol {
@@ -354,6 +358,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
             kind: TokenKind,
             offset: usize,
             length: usize,
+            line: usize,
         }
 
         impl ScanToken {
@@ -415,10 +420,12 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
         pub enum ParseError {
             InvalidToken {
                 offset: usize,
+                line: usize,
             },
             UnexpectedToken {
                 offset: usize,
                 length: usize,
+                line: usize,
             },
             IncompleteInput,
         }
@@ -436,7 +443,10 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                 let mut tokens = ScannedTokens::from(input);
                 for token in tokens {
                     if token.is_invalid() {
-                        return Err(ParseError::InvalidToken { offset: token.offset });
+                        return Err(ParseError::InvalidToken {
+                            offset: token.offset,
+                            line: token.line,
+                        });
                     }
                     let idx = token.idx();
                     let mut state = *stack.last().unwrap();
@@ -468,10 +478,13 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                         state = new_state;
                         stack.push(new_state);
                     } else {
-                        return Err(ParseError::UnexpectedToken {
+                        return Err(if idx == #end_id {
+                            ParseError::IncompleteInput
+                        } else {ParseError::UnexpectedToken {
                             offset: token.offset,
                             length: token.length,
-                        });
+                            line: token.line,
+                        }});
                     }
                 }
                 Err(ParseError::IncompleteInput)

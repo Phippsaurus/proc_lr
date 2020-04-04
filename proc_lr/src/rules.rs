@@ -115,6 +115,7 @@ pub(crate) fn first_sets(rules: &[ParseRule]) -> FirstSets {
             }
         }
     }
+
     while !dependency_graph.is_empty() {
         let (symbol, _) = dependency_graph
             .iter()
@@ -138,6 +139,7 @@ pub(crate) fn first_sets(rules: &[ParseRule]) -> FirstSets {
     }
     first_sets
 }
+
 pub(crate) trait Closure {
     fn init(&self) -> Vec<LookaheadRule>;
     fn closure(&self, all_rules: &[ParseRule], first_sets: &FirstSets) -> State {
@@ -233,9 +235,11 @@ impl State {
     fn new(rules: Vec<LookaheadRule>) -> Self {
         Self { rules }
     }
+
     pub(crate) fn is_empty(&self) -> bool {
         self.rules.is_empty()
     }
+
     pub(crate) fn explore<'a>(
         &'a self,
         symbols: &'a [Symbol],
@@ -272,6 +276,7 @@ pub(crate) enum Conflict {
     ShiftReduce(StateId, RuleId),
     ReduceReduce(RuleId, RuleId),
 }
+
 #[derive(Clone, Debug)]
 pub(crate) enum Action {
     Undefined,

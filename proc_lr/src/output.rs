@@ -26,6 +26,7 @@ pub(crate) fn generate_scanner(
                         kind: TokenKind::Production(#id, #production),
                         offset,
                         length,
+                        line,
                     });
                 }
             }
@@ -36,25 +37,51 @@ pub(crate) fn generate_scanner(
                         kind: TokenKind::Token(#id),
                         offset,
                         length,
+                        line,
                     });
                 }
             }
         };
         match rule.token() {
-            ScanInput::Char(c) => quote! {
-                if self.input.starts_with(#c) {
-                    let token_text = &self.input[..1];
-                    self.input = &self.input[1..];
+            ScanInput::Char(c) => {
+                let line_counter = if c == &'\n' {
+                    quote! {
+                        self.offset = 0;
+                        self.line += 1;
+                    }
+                } else {
+                    quote! {
+                        self.offset += 1;
+                    }
+                };
+                quote! {
+                    if self.input.starts_with(#c) {
+                        let token_text = &self.input[..1];
+                        self.input = &self.input[1..];
 
-                    let offset = self.offset;
-                    let length = 1;
-                    self.offset += 1;
+                        let offset = self.offset;
+                        let length = 1;
+                        let line = self.line;
 
-                    #return_stmt
+                        #line_counter
+
+                        #return_stmt
+                    }
                 }
             },
             ScanInput::Str(s) => {
                 let len = s.len();
+                let line_counter = if let lines @ 1.. = s.chars().filter(|c| c == &'\n').count() {
+                    let offset = len - 1 - s.rfind('\n').unwrap();
+                    quote! {
+                        self.offset = #offset;
+                        self.line += #lines;
+                    }
+                } else {
+                    quote! {
+                        self.offset += #len;
+                    }
+                };
                 quote! {
                     if self.input.starts_with(#s) {
                         let token_text = &self.input[..#len];
@@ -62,7 +89,9 @@ pub(crate) fn generate_scanner(
 
                         let offset = self.offset;
                         let length = #len;
-                        self.offset += #len;
+                        let line = self.line;
+
+                        #line_counter
 
                         #return_stmt
                     }
@@ -83,7 +112,15 @@ pub(crate) fn generate_scanner(
 
                         let offset = self.offset;
                         let length = end;
-                        self.offset += end;
+                        let line = self.line;
+
+                        let num_lines = token_text.chars().filter(|c| c == &'\n').count();
+                        if num_lines == 0 {
+                            self.offset += end;
+                        } else {
+                            self.line += num_lines;
+                            self.offset = end - 1 - token_text.rfind('\n').unwrap();
+                        }
 
                         #return_stmt
                     }
@@ -96,6 +133,7 @@ pub(crate) fn generate_scanner(
         struct ScannedTokens<'a> {
             input: &'a str,
             offset: usize,
+            line: usize,
         }
 
         impl<'a> ScannedTokens<'a> {
@@ -103,6 +141,7 @@ pub(crate) fn generate_scanner(
                 Self {
                     input,
                     offset: 0,
+                    line: 0,
                 }
             }
         }
@@ -119,12 +158,14 @@ pub(crate) fn generate_scanner(
                         kind: TokenKind::Token(#end_symbol),
                         offset: self.offset,
                         length: 0,
+                        line: self.line,
                     })
                 } else {
                     Some(ScanToken {
                         kind: TokenKind::Invalid,
                         offset: self.offset,
                         length: 1,
+                        line: self.line,
                     })
                 }
             }

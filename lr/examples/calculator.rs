@@ -31,23 +31,31 @@ fn parse(parser: &Parser, input: &str) {
     match parser.parse(input) {
         Ok(result) => println!("{} = {}", input, result),
         Err(error) => match error {
-            ParseError::InvalidToken { offset } => println!(
-                "Invalid input {:?} at column {} of {}:\n{}\n{}^",
-                input.chars().nth(offset),
-                offset,
-                input.len(),
-                input,
-                repeat(' ').take(offset).collect::<String>()
-            ),
-            ParseError::UnexpectedToken { offset, length } => println!(
-                "Unexpected token at column {}:\n{}\n{}",
-                offset,
-                input,
-                repeat(' ')
-                    .take(offset)
-                    .chain(repeat('~').take(length))
-                    .collect::<String>(),
-            ),
+            ParseError::InvalidToken { offset, line } => {
+                let invalid_line = input.lines().nth(line).unwrap();
+                println!(
+                    "Invalid input \"{}\" at column {} line {}:\n{}\n{}^",
+                    &invalid_line[offset..offset + 1],
+                    offset,
+                    line,
+                    invalid_line,
+                    repeat(' ').take(offset).collect::<String>()
+                );
+            }
+            ParseError::UnexpectedToken { offset, length, line } => {
+                let invalid_line = input.lines().nth(line).unwrap();
+                println!(
+                    "Unexpected token \"{}\" at column {} line {}:\n{}\n{}",
+                    &invalid_line[offset..offset + length],
+                    offset,
+                    line,
+                    invalid_line,
+                    repeat(' ')
+                        .take(offset)
+                        .chain(repeat('~').take(length))
+                        .collect::<String>(),
+                );
+            }
             ParseError::IncompleteInput => println!("Incomplete input"),
         },
     }
