@@ -4,7 +4,7 @@
 extern crate proc_macro;
 
 mod common_types;
-mod dot_string_escape;
+mod graphviz;
 mod input;
 mod output;
 mod rules;
@@ -17,7 +17,7 @@ use std::collections::{BTreeSet, HashMap};
 use syn::parse_macro_input;
 
 use common_types::*;
-use dot_string_escape::Escape;
+use graphviz::generate_transition_graph_svg;
 use input::*;
 use output::*;
 use rules::*;
@@ -29,7 +29,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
     let end_symbol = symbols["$"].terminal();
     let mut rev_symbols = HashMap::new();
     for (k, v) in symbols.symbols.iter() {
-        rev_symbols.insert(v, k);
+        rev_symbols.insert(v, k.as_str());
     }
     let mut idx = 0;
     let mut start_lookahead = BTreeSet::new();
@@ -105,82 +105,8 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
         states.append(&mut new_states);
         idx += 1;
     }
-    let dot = "digraph states {\nnode[shape = record];\n".to_string()
-        + &states
-            .iter()
-            .enumerate()
-            .map(|(idx, state)| {
-                format!("state{0}[label = \"State {0}:\\n", idx)
-                    + &state
-                        .rules
-                        .iter()
-                        .map(|rule| {
-                            rev_symbols[&Symbol::Nonterminal(rule.lhs())].escape()
-                                + " ⇒"
-                                + &rule
-                                    .rhs()
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(idx, symbol)| {
-                                        let pre = if idx == rule.seen {
-                                            "•".to_string()
-                                        } else {
-                                            " ".to_string()
-                                        };
-                                        pre + &rev_symbols[symbol].escape()
-                                    })
-                                    .collect::<String>()
-                                + if rule.is_reducible() {
-                                    "• ⦃"
-                                } else {
-                                    "  ⦃"
-                                }
-                                + &rule
-                                    .lookahead
-                                    .iter()
-                                    .map(|terminal| {
-                                        rev_symbols[&Symbol::Terminal(*terminal)].escape()
-                                    })
-                                    .collect::<String>()
-                                + "⦄\\n"
-                        })
-                        .collect::<String>()
-                    + "\"];\n"
-            })
-            .collect::<String>()
-        + &table
-            .iter()
-            .enumerate()
-            .flat_map(|(id, actions)| {
-                actions
-                    .iter()
-                    .zip(symbols.iter())
-                    .map(move |(action, symbol)| (id, action, symbol))
-            })
-            .map(|(state, action, symbol)| match action {
-                Action::Goto(StateId(id)) => format!(
-                    "state{} -> state{} [label = \"{}\"];\n",
-                    state, id, rev_symbols[symbol]
-                ),
-                Action::Shift(StateId(id)) => format!(
-                    "state{} -> state{} [label = \"{}\"];\n",
-                    state, id, rev_symbols[symbol]
-                ),
-                _ => "".to_string(),
-            })
-            .collect::<String>()
-        + "}";
 
-    let echo = std::process::Command::new("echo")
-        .arg(&dot)
-        .stdout(std::process::Stdio::piped())
-        .spawn()
-        .expect("Cannot echo");
-    let graph = std::process::Command::new("dot")
-        .arg("-Tsvg")
-        .stdin(echo.stdout.expect("Cannot access echo output"))
-        .output()
-        .expect("`dot` graph generator failed");
+    let transition_graph_svg = generate_transition_graph_svg(&table, &symbols, &states, &rev_symbols);
 
     let output = "<h1>Rules</h1>\n<ol start=\"0\">\n".to_string()
         + &grammar
@@ -193,7 +119,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                     + &rule
                         .rhs()
                         .iter()
-                        .map(|symbol| " ".to_string() + &rev_symbols[symbol])
+                        .map(|symbol| " ".to_string() + rev_symbols[symbol])
                         .collect::<String>()
                     + "</li>\n"
             })
@@ -230,10 +156,8 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                     + "</tr>\n"
             })
             .collect::<String>()
-        + "</table>\n<br /><h1>Transition Graph</h1>\n<!--\n"
-        + &dot
-        + "\n-->"
-        + &String::from_utf8(graph.stdout).expect("Command output not in UTF-8");
+        + "</table>\n<br /><h1>Transition Graph</h1>\n"
+        + &transition_graph_svg;
 
     let num_symbols = symbols.len();
     let num_states = states.len();
