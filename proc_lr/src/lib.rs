@@ -263,6 +263,8 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
     let end_id = end_symbol.id();
 
     TokenStream::from(quote! {
+        use lr::*;
+
         #[derive(Debug)]
         pub enum Symbol {
             #(#variants),*
@@ -290,68 +292,25 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                 match self.kind {
                     TokenKind::Token(u) => u,
                     TokenKind::Production(u, _) => u,
-                    TokenKind::Invalid => { panic!("Invalid input - no transition table index"); }
+                    TokenKind::Invalid => {
+                        panic!("Invalid input - no transition table index");
+                    }
                 }
             }
 
             fn is_invalid(&self) -> bool {
-                if let TokenKind::Invalid = self.kind { true } else { false }
+                if let TokenKind::Invalid = self.kind {
+                    true
+                } else {
+                    false
+                }
             }
         }
 
         #scanner
 
-        #[derive(Debug)]
-        pub struct ShiftReduce {
-            shift_id: usize,
-            goto: usize,
-            pop: usize,
-            lookahead: Vec<usize>,
-        }
-
-        impl ShiftReduce {
-            pub fn new(shift_id: usize, goto: usize, pop: usize, lookahead: Vec<usize>) -> Self {
-                Self { shift_id, goto, pop, lookahead }
-            }
-        }
-
-        #[derive(Debug)]
-        pub struct LookaheadReduce {
-            goto: usize,
-            pop: usize,
-            lookahead: Vec<usize>,
-        }
-
-        impl LookaheadReduce {
-            pub fn new(goto: usize, pop: usize, lookahead: Vec<usize>) -> Self {
-                Self { goto, pop, lookahead }
-            }
-        }
-
-        #[derive(Debug)]
-        pub enum Action {
-            Undefined,
-            Shift(usize),
-            Reduce(usize),
-            Goto(usize),
-            Accept,
-        }
-
         pub struct Parser {
             table: [[Action; #num_symbols]; #num_states],
-        }
-
-        pub enum ParseError {
-            InvalidToken {
-                offset: usize,
-                line: usize,
-            },
-            UnexpectedToken {
-                offset: usize,
-                length: usize,
-                line: usize,
-            },
-            IncompleteInput,
         }
 
         impl Parser {
@@ -392,7 +351,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                     if let Action::Accept = self.table[state][idx] {
                         return values
                             .pop()
-                            .map(|symbol| symbol.into())
+                            .map(Symbol::into)
                             .ok_or_else(|| ParseError::IncompleteInput);
                     }
                     if let Action::Shift(new_state) = self.table[state][idx] {
