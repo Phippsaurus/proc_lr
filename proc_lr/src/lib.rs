@@ -4,7 +4,7 @@
 extern crate proc_macro;
 
 mod common_types;
-mod graphviz;
+mod debug_output;
 mod input;
 mod output;
 mod rules;
@@ -17,7 +17,7 @@ use std::collections::{BTreeSet, HashMap};
 use syn::parse_macro_input;
 
 use common_types::*;
-use graphviz::generate_transition_graph_svg;
+use debug_output::generate_debug_output;
 use input::*;
 use output::*;
 use rules::*;
@@ -51,27 +51,22 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
             .rules
             .iter()
             .filter(|rule| rule.is_reducible())
-            .map(|rule| (rule.id(), rule.lookahead.clone()))
-            .collect::<Vec<_>>();
+            .map(|rule| (rule.id(), rule.lookahead.clone()));
         let mut reduces = <HashMap<Terminal, Vec<RuleId>>>::new();
-        for (id, lookahead) in reduce_rules.iter() {
+        for (id, lookahead) in reduce_rules {
             for terminal in lookahead.iter() {
-                reduces.entry(*terminal).or_default().push(*id);
+                reduces.entry(*terminal).or_default().push(id);
             }
         }
-        table.push(
-            states[idx]
-                .explore(symbols, grammar.parse_rules(), &first_sets)
-                .map(|(symbol, state)| {
-                    if state.is_empty() {
-                        if symbol.is_terminal() && reduces.contains_key(&symbol.terminal()) {
-                            let rules = &reduces[&symbol.terminal()];
-                            if rules.len() == 1 {
-                                if rules[0].0 == 0 {
-                                    Action::Accept
-                                } else {
-                                    Action::Reduce(rules[0])
-                                }
+        let state_transitions = states[idx]
+            .explore(symbols, grammar.parse_rules(), &first_sets)
+            .map(|(symbol, state)| {
+                if state.is_empty() {
+                    if symbol.is_terminal() && reduces.contains_key(&symbol.terminal()) {
+                        let rules = &reduces[&symbol.terminal()];
+                        if rules.len() == 1 {
+                            if rules[0].0 == 0 {
+                                Action::Accept
                             } else {
                                 Action::Conflict(Conflict::ReduceReduce(rules[0], rules[1]))
                             }
@@ -106,58 +101,7 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
         idx += 1;
     }
 
-    let transition_graph_svg = generate_transition_graph_svg(&table, &symbols, &states, &rev_symbols);
-
-    let output = "<h1>Rules</h1>\n<ol start=\"0\">\n".to_string()
-        + &grammar
-            .parse_rules()
-            .iter()
-            .map(|rule| {
-                "<li>".to_string()
-                    + rev_symbols[&Symbol::Nonterminal(rule.lhs())]
-                    + " ⇒"
-                    + &rule
-                        .rhs()
-                        .iter()
-                        .map(|symbol| " ".to_string() + rev_symbols[symbol])
-                        .collect::<String>()
-                    + "</li>\n"
-            })
-            .collect::<String>()
-        + "</ol>\n<h1>Transition Table</h1>\n<table style=\"width: 100%\">\n<tr><th></th>"
-        + &symbols
-            .iter()
-            .map(|symbol| "<th>".to_string() + rev_symbols[symbol] + "</th>\n")
-            .collect::<String>()
-        + "</tr>"
-        + &table
-            .iter()
-            .enumerate()
-            .map(|(idx, row)| {
-                format!("<tr><th>State {}</th>", idx)
-                    + &row
-                        .iter()
-                        .map(|action| match action {
-                            Action::Accept => "<td>A</td>".to_string(),
-                            Action::Undefined => "<td>-</td>\n".to_string(),
-                            Action::Goto(StateId(id)) => format!("<td>G {}</td>\n", id),
-                            Action::Shift(StateId(id)) => format!("<td>S {}</td>\n", id),
-                            Action::Reduce(RuleId(id)) => format!("<td>R {}</td>\n", id),
-                            Action::Conflict(conflict) => match conflict {
-                                Conflict::ShiftReduce(StateId(state), RuleId(rule)) => {
-                                    format!("<td>S{}/R{}</td>", state, rule)
-                                }
-                                Conflict::ReduceReduce(RuleId(rule), RuleId(other)) => {
-                                    format!("<td>R{}/R{}</td>", rule, other)
-                                }
-                            },
-                        })
-                        .collect::<String>()
-                    + "</tr>\n"
-            })
-            .collect::<String>()
-        + "</table>\n<br /><h1>Transition Graph</h1>\n"
-        + &transition_graph_svg;
+    let output = generate_debug_output(&grammar, &table, &symbols, &states, &rev_symbols);
 
     let num_symbols = symbols.len();
     let num_states = states.len();
@@ -185,7 +129,6 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                     let args = (0..arg_count).map(|_arg_idx| {
                         quote! {
                             args.next().unwrap().into()
-                            // args[#arg_idx].into()
                         }
                     });
                     quote! {
@@ -194,7 +137,6 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                                 let mut args = values.drain(values.len() - #arg_count..);
                                 (#production)(#(#args),*)
                             };
-                            // let args = values.split_off(values.len() - #arg_count);
                             values.push(Symbol::#ident(new_value));
                             (#goto, #pop)
                         }
