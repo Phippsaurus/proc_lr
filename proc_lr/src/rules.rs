@@ -1,7 +1,7 @@
 use crate::common_types::*;
 use std::collections::{BTreeSet, HashMap, HashSet};
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub(crate) struct LookaheadRule {
     pub(crate) id: RuleId,
     pub(crate) lhs: Nonterminal,
@@ -142,6 +142,7 @@ pub(crate) fn first_sets(rules: &[ParseRule]) -> FirstSets {
 
 pub(crate) trait Closure {
     fn init(&self) -> Vec<LookaheadRule>;
+
     fn closure(&self, all_rules: &[ParseRule], first_sets: &FirstSets) -> State {
         let mut rules = self.init();
         let num_initial_rules = rules.len();
@@ -226,7 +227,7 @@ impl StateId {
     }
 }
 
-#[derive(PartialEq, Eq, Clone)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub(crate) struct State {
     pub(crate) rules: Vec<LookaheadRule>,
 }
@@ -236,7 +237,7 @@ impl State {
         Self { rules }
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.rules.is_empty()
     }
 
@@ -245,29 +246,117 @@ impl State {
         symbols: &'a [Symbol],
         all_rules: &'a [ParseRule],
         first_sets: &'a FirstSets,
-    ) -> impl Iterator<Item = (Symbol, Self)> + 'a {
+    ) -> impl Iterator<Item = Self> + 'a {
         symbols.iter().map(move |symbol| {
-            (
-                *symbol,
-                self.rules
-                    .iter()
-                    .filter_map(|rule| {
-                        rule.first_rhs().and_then(
-                            |first| {
-                                if first == *symbol {
-                                    Some(rule)
-                                } else {
-                                    None
-                                }
-                            },
-                        )
-                    })
-                    .map(|rule| rule.shift())
-                    .collect::<Vec<_>>()
-                    .as_slice()
-                    .closure(all_rules, first_sets),
-            )
+            self.rules
+                .iter()
+                .filter_map(|rule| {
+                    rule.first_rhs()
+                        .filter(|rhs| rhs == symbol)
+                        .map(|_| rule.shift())
+                })
+                .collect::<Vec<_>>()
+                .as_slice()
+                .closure(all_rules, first_sets)
         })
+    }
+
+    fn explore_transitions<'a>(
+        &'a self,
+        symbols: &'a [Symbol],
+        all_rules: &'a [ParseRule],
+        first_sets: &'a FirstSets,
+    ) -> impl Iterator<Item = (Self, Symbol)> + 'a {
+        symbols.iter().map(move |symbol| {
+            let state = self
+                .rules
+                .iter()
+                .filter_map(|rule| {
+                    rule.first_rhs()
+                        .filter(|rhs| rhs == symbol)
+                        .map(|_| rule.shift())
+                })
+                .collect::<Vec<_>>()
+                .as_slice()
+                .closure(all_rules, first_sets);
+            (state, *symbol)
+        })
+    }
+
+    pub(crate) fn signature(&self) -> Vec<(RuleId, usize)> {
+        self.rules.iter().map(|rule| (rule.id, rule.seen)).collect()
+    }
+
+    pub(crate) fn merge(&mut self, other: &Self) -> bool {
+        let mut merged = false;
+        for (ref mut rule, ref other) in self.rules.iter_mut().zip(other.rules.iter()) {
+            for symbol in other.lookahead.iter() {
+                if !rule.lookahead.contains(symbol) {
+                    rule.lookahead.insert(*symbol);
+                    merged = true;
+                }
+            }
+        }
+        merged
+    }
+
+    fn get_reduce_rules(&self) -> HashMap<Terminal, Vec<RuleId>> {
+        let reduce_rules = self
+            .rules
+            .iter()
+            .filter(|rule| rule.is_reducible())
+            .map(|rule| (rule.id(), rule.lookahead.clone()));
+
+        let mut reduces = <HashMap<Terminal, Vec<RuleId>>>::new();
+        for (id, lookahead) in reduce_rules {
+            for terminal in lookahead.iter() {
+                reduces.entry(*terminal).or_default().push(id);
+            }
+        }
+        reduces
+    }
+
+    pub(crate) fn transitions(
+        &self,
+        symbols: &[Symbol],
+        parse_rules: &[ParseRule],
+        first_sets: &FirstSets,
+        state_ids: &HashMap<Vec<(RuleId, usize)>, StateId>,
+    ) -> Vec<Action> {
+        let reduces = self.get_reduce_rules();
+
+        self.explore_transitions(symbols, parse_rules, first_sets)
+            .map(|(state, symbol)| {
+                if state.is_empty() {
+                    if symbol.is_terminal() && reduces.contains_key(&symbol.terminal()) {
+                        let rules = &reduces[&symbol.terminal()];
+                        if rules.len() == 1 {
+                            if rules[0].0 == 0 {
+                                Action::Accept
+                            } else {
+                                Action::Reduce(rules[0])
+                            }
+                        } else {
+                            Action::Conflict(Conflict::ReduceReduce(rules[0], rules[1]))
+                        }
+                    } else {
+                        Action::Undefined
+                    }
+                } else {
+                    let id = state_ids[&state.signature()];
+                    if symbol.is_terminal() {
+                        let terminal = symbol.terminal();
+                        if reduces.contains_key(&terminal) {
+                            Action::Conflict(Conflict::ShiftReduce(id, reduces[&terminal][0]))
+                        } else {
+                            Action::Shift(id)
+                        }
+                    } else {
+                        Action::Goto(id)
+                    }
+                }
+            })
+            .collect::<Vec<_>>()
     }
 }
 

@@ -22,6 +22,8 @@ use input::*;
 use output::*;
 use rules::*;
 
+use std::collections::VecDeque;
+
 #[proc_macro]
 pub fn grammar(tokens: TokenStream) -> TokenStream {
     let grammar = parse_macro_input!(tokens as Grammar);
@@ -31,7 +33,6 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
     for (k, v) in symbols.symbols.iter() {
         rev_symbols.insert(v, k.as_str());
     }
-    let mut idx = 0;
     let mut start_lookahead = BTreeSet::new();
     start_lookahead.insert(end_symbol);
     let first_sets = first_sets(grammar.parse_rules());
@@ -41,65 +42,36 @@ pub fn grammar(tokens: TokenStream) -> TokenStream {
                 .closure(grammar.parse_rules(), &first_sets),
         ];
     let mut state_ids = HashMap::new();
-    let mut table = Vec::new();
-    state_ids.insert(states[idx].rules.clone(), StateId::new(idx));
+    state_ids.insert(states[0].signature(), StateId::new(0));
+    let mut states_queue = VecDeque::new();
+    states_queue.push_back(0);
     let symbols = symbols.list();
 
-    while idx < states.len() {
-        let mut new_states = Vec::new();
-        let reduce_rules = states[idx]
-            .rules
-            .iter()
-            .filter(|rule| rule.is_reducible())
-            .map(|rule| (rule.id(), rule.lookahead.clone()));
-        let mut reduces = <HashMap<Terminal, Vec<RuleId>>>::new();
-        for (id, lookahead) in reduce_rules {
-            for terminal in lookahead.iter() {
-                reduces.entry(*terminal).or_default().push(id);
+    while let Some(idx) = states_queue.pop_front() {
+        let new_states: Vec<State> = states[idx]
+            .explore(symbols, grammar.parse_rules(), &first_sets)
+            .collect();
+
+        for state in new_states {
+            if let Some(id) = state_ids.get(&state.signature()) {
+                if state != states[id.0] {
+                    if states[id.0].merge(&state) {
+                        states_queue.push_back(id.0);
+                    }
+                }
+            } else {
+                let id = StateId::new(states.len());
+                state_ids.insert(state.signature(), id);
+                states.push(state);
+                states_queue.push_back(id.0);
             }
         }
-        let state_transitions = states[idx]
-            .explore(symbols, grammar.parse_rules(), &first_sets)
-            .map(|(symbol, state)| {
-                if state.is_empty() {
-                    if symbol.is_terminal() && reduces.contains_key(&symbol.terminal()) {
-                        let rules = &reduces[&symbol.terminal()];
-                        if rules.len() == 1 {
-                            if rules[0].0 == 0 {
-                                Action::Accept
-                            } else {
-                                Action::Conflict(Conflict::ReduceReduce(rules[0], rules[1]))
-                            }
-                        } else {
-                            Action::Undefined
-                        }
-                    } else {
-                        let id = if let Some(id) = state_ids.get(&state.rules) {
-                            *id
-                        } else {
-                            let id = StateId::new(states.len() + new_states.len());
-                            state_ids.insert(state.rules.clone(), id);
-                            new_states.push(state);
-                            id
-                        };
-                        if symbol.is_terminal() {
-                            let terminal = symbol.terminal();
-                            if reduces.contains_key(&terminal) {
-                                Action::Conflict(Conflict::ShiftReduce(id, reduces[&terminal][0]))
-                            } else {
-                                Action::Shift(id)
-                            }
-                        } else {
-                            Action::Goto(id)
-                        }
-                    }
-                })
-                .collect::<Vec<_>>(),
-        );
-
-        states.append(&mut new_states);
-        idx += 1;
     }
+
+    let table: Vec<Vec<Action>> = states
+        .iter()
+        .map(|state| state.transitions(symbols, grammar.parse_rules(), &first_sets, &state_ids))
+        .collect();
 
     let output = generate_debug_output(&grammar, &table, &symbols, &states, &rev_symbols);
 
